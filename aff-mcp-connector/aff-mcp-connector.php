@@ -2,7 +2,7 @@
 /**
  * Plugin Name: AFF MCP Connector
  * Description: Exposes a Model Context Protocol (MCP) endpoint so Claude can connect to this site as a custom connector. Supports WordPress content + WooCommerce store tools.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Waris Salawudeen
  * License: GPL-2.0+
  */
@@ -14,7 +14,7 @@ class AFF_MCP_Connector {
 	const OPTION_TOKEN   = 'aff_mcp_token';
 	const PROTOCOL       = '2025-03-26';
 	const SERVER_NAME    = 'alpha-fresh-food-mcp';
-	const SERVER_VERSION = '1.0.0';
+	const SERVER_VERSION = '1.1.0';
 
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'on_activate' ) );
@@ -209,6 +209,99 @@ class AFF_MCP_Connector {
 					'properties' => array( 'limit' => $int, 'page' => $int ),
 				),
 			),
+			array(
+				'name'        => 'upload_media_from_url',
+				'description' => 'Download an image from a public HTTPS URL and add it to the media library.',
+				'inputSchema' => array(
+					'type'       => 'object',
+					'properties' => array(
+						'url'   => array( 'type' => 'string', 'description' => 'Public image URL' ),
+						'title' => $str,
+						'alt'   => array( 'type' => 'string', 'description' => 'Alt text for accessibility/SEO' ),
+					),
+					'required'   => array( 'url' ),
+				),
+			),
+			array(
+				'name'        => 'list_media',
+				'description' => 'List media library items (id, title, url, mime type).',
+				'inputSchema' => array(
+					'type'       => 'object',
+					'properties' => array( 'limit' => $int, 'page' => $int ),
+				),
+			),
+			array(
+				'name'        => 'set_featured_image',
+				'description' => 'Set the featured image on a post, page, or product.',
+				'inputSchema' => array(
+					'type'       => 'object',
+					'properties' => array( 'post_id' => $int, 'media_id' => $int ),
+					'required'   => array( 'post_id', 'media_id' ),
+				),
+			),
+			array(
+				'name'        => 'list_terms',
+				'description' => 'List terms in a taxonomy: category, post_tag, product_cat, or product_tag.',
+				'inputSchema' => array(
+					'type'       => 'object',
+					'properties' => array(
+						'taxonomy' => $str,
+						'limit'    => $int,
+					),
+					'required'   => array( 'taxonomy' ),
+				),
+			),
+			array(
+				'name'        => 'create_term',
+				'description' => 'Create a term (category/tag) in a taxonomy.',
+				'inputSchema' => array(
+					'type'       => 'object',
+					'properties' => array(
+						'taxonomy'    => $str,
+						'name'        => $str,
+						'parent_id'   => array( 'type' => 'integer', 'description' => 'Parent term ID for hierarchical taxonomies' ),
+						'description' => $str,
+					),
+					'required'   => array( 'taxonomy', 'name' ),
+				),
+			),
+			array(
+				'name'        => 'assign_terms',
+				'description' => 'Assign terms (by name) to a post or product. Creates missing terms automatically.',
+				'inputSchema' => array(
+					'type'       => 'object',
+					'properties' => array(
+						'post_id'  => $int,
+						'taxonomy' => $str,
+						'terms'    => array( 'type' => 'array', 'items' => array( 'type' => 'string' ) ),
+						'append'   => array( 'type' => 'boolean', 'description' => 'true = add to existing terms, false = replace (default false)' ),
+					),
+					'required'   => array( 'post_id', 'taxonomy', 'terms' ),
+				),
+			),
+			array(
+				'name'        => 'get_seo_meta',
+				'description' => 'Get SEO title, meta description, and focus keyword for a post (Yoast or Rank Math).',
+				'inputSchema' => array(
+					'type'       => 'object',
+					'properties' => array( 'post_id' => $int ),
+					'required'   => array( 'post_id' ),
+				),
+			),
+			array(
+				'name'        => 'update_seo_meta',
+				'description' => 'Update SEO title, meta description, and/or focus keyword for a post (Yoast or Rank Math).',
+				'inputSchema' => array(
+					'type'       => 'object',
+					'properties' => array(
+						'post_id'       => $int,
+						'title'         => $str,
+						'description'   => $str,
+						'focus_keyword' => $str,
+					),
+					'required'   => array( 'post_id' ),
+				),
+			),
 		);
 
 		// WooCommerce tools only when Woo is active
@@ -284,6 +377,68 @@ class AFF_MCP_Connector {
 						'properties' => array( 'days' => array( 'type' => 'integer', 'description' => 'lookback window, default 30' ) ),
 					),
 				),
+				array(
+					'name'        => 'list_coupons',
+					'description' => 'List WooCommerce coupons (id, code, type, amount, usage, expiry).',
+					'inputSchema' => array(
+						'type'       => 'object',
+						'properties' => array( 'limit' => $int, 'page' => $int ),
+					),
+				),
+				array(
+					'name'        => 'get_coupon',
+					'description' => 'Get one coupon by ID or code.',
+					'inputSchema' => array(
+						'type'       => 'object',
+						'properties' => array( 'id' => $int, 'code' => $str ),
+					),
+				),
+				array(
+					'name'        => 'create_coupon',
+					'description' => 'Create a coupon. discount_type: percent, fixed_cart, or fixed_product.',
+					'inputSchema' => array(
+						'type'       => 'object',
+						'properties' => array(
+							'code'           => $str,
+							'discount_type'  => array( 'type' => 'string', 'description' => 'percent | fixed_cart | fixed_product (default percent)' ),
+							'amount'         => $num,
+							'expiry_date'    => array( 'type' => 'string', 'description' => 'YYYY-MM-DD' ),
+							'minimum_amount' => $num,
+							'usage_limit'    => $int,
+							'free_shipping'  => array( 'type' => 'boolean' ),
+							'individual_use' => array( 'type' => 'boolean' ),
+						),
+						'required'   => array( 'code', 'amount' ),
+					),
+				),
+				array(
+					'name'        => 'update_coupon',
+					'description' => 'Update an existing coupon by ID. Only supplied fields change.',
+					'inputSchema' => array(
+						'type'       => 'object',
+						'properties' => array(
+							'id'             => $int,
+							'code'           => $str,
+							'discount_type'  => $str,
+							'amount'         => $num,
+							'expiry_date'    => array( 'type' => 'string', 'description' => 'YYYY-MM-DD, empty string to clear' ),
+							'minimum_amount' => $num,
+							'usage_limit'    => $int,
+							'free_shipping'  => array( 'type' => 'boolean' ),
+							'individual_use' => array( 'type' => 'boolean' ),
+						),
+						'required'   => array( 'id' ),
+					),
+				),
+				array(
+					'name'        => 'trash_coupon',
+					'description' => 'Move a coupon to trash (recoverable, not a permanent delete).',
+					'inputSchema' => array(
+						'type'       => 'object',
+						'properties' => array( 'id' => $int ),
+						'required'   => array( 'id' ),
+					),
+				),
 			) );
 		}
 
@@ -309,6 +464,19 @@ class AFF_MCP_Connector {
 				case 'list_orders':     $data = $this->tool_list_orders( $args ); break;
 				case 'get_order':       $data = $this->tool_get_order( $args ); break;
 				case 'get_store_stats': $data = $this->tool_store_stats( $args ); break;
+				case 'upload_media_from_url': $data = $this->tool_upload_media( $args ); break;
+				case 'list_media':      $data = $this->tool_list_media( $args ); break;
+				case 'set_featured_image': $data = $this->tool_set_featured_image( $args ); break;
+				case 'list_terms':      $data = $this->tool_list_terms( $args ); break;
+				case 'create_term':     $data = $this->tool_create_term( $args ); break;
+				case 'assign_terms':    $data = $this->tool_assign_terms( $args ); break;
+				case 'get_seo_meta':    $data = $this->tool_get_seo( $args ); break;
+				case 'update_seo_meta': $data = $this->tool_update_seo( $args ); break;
+				case 'list_coupons':    $data = $this->tool_list_coupons( $args ); break;
+				case 'get_coupon':      $data = $this->tool_get_coupon( $args ); break;
+				case 'create_coupon':   $data = $this->tool_create_coupon( $args ); break;
+				case 'update_coupon':   $data = $this->tool_update_coupon( $args ); break;
+				case 'trash_coupon':    $data = $this->tool_trash_coupon( $args ); break;
 				default:
 					return $this->jsonrpc_error( $id, -32602, 'Unknown tool: ' . $name );
 			}
@@ -581,6 +749,209 @@ class AFF_MCP_Connector {
 			'revenue'     => round( $revenue, 2 ),
 			'currency'    => get_woocommerce_currency(),
 		);
+	}
+
+	/* ----------------------- Media tools -------------------------- */
+
+	private function tool_upload_media( $args ) {
+		if ( empty( $args['url'] ) || 0 !== strpos( $args['url'], 'http' ) ) throw new Exception( 'A valid http(s) image URL is required' );
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+		$title = isset( $args['title'] ) ? sanitize_text_field( $args['title'] ) : null;
+		$id = media_sideload_image( esc_url_raw( $args['url'] ), 0, $title, 'id' );
+		if ( is_wp_error( $id ) ) throw new Exception( $id->get_error_message() );
+		if ( ! empty( $args['alt'] ) ) update_post_meta( $id, '_wp_attachment_image_alt', sanitize_text_field( $args['alt'] ) );
+		return array( 'attachment_id' => (int) $id, 'url' => wp_get_attachment_url( $id ) );
+	}
+
+	private function tool_list_media( $args ) {
+		$q = new WP_Query( array(
+			'post_type'      => 'attachment',
+			'post_status'    => 'inherit',
+			'posts_per_page' => min( 100, isset( $args['limit'] ) ? (int) $args['limit'] : 25 ),
+			'paged'          => isset( $args['page'] ) ? max( 1, (int) $args['page'] ) : 1,
+		) );
+		$out = array();
+		foreach ( $q->posts as $p ) {
+			$out[] = array(
+				'id'    => $p->ID,
+				'title' => $p->post_title,
+				'mime'  => $p->post_mime_type,
+				'url'   => wp_get_attachment_url( $p->ID ),
+			);
+		}
+		return array( 'total' => (int) $q->found_posts, 'media' => $out );
+	}
+
+	private function tool_set_featured_image( $args ) {
+		$ok = set_post_thumbnail( (int) $args['post_id'], (int) $args['media_id'] );
+		if ( ! $ok ) throw new Exception( 'Failed to set featured image (check post and media IDs)' );
+		return array( 'post_id' => (int) $args['post_id'], 'media_id' => (int) $args['media_id'], 'success' => true );
+	}
+
+	/* ----------------------- Taxonomy tools ----------------------- */
+
+	private function tool_list_terms( $args ) {
+		$tax = sanitize_key( $args['taxonomy'] );
+		if ( ! taxonomy_exists( $tax ) ) throw new Exception( 'Unknown taxonomy: ' . $tax );
+		$terms = get_terms( array(
+			'taxonomy'   => $tax,
+			'hide_empty' => false,
+			'number'     => min( 200, isset( $args['limit'] ) ? (int) $args['limit'] : 100 ),
+		) );
+		if ( is_wp_error( $terms ) ) throw new Exception( $terms->get_error_message() );
+		$out = array();
+		foreach ( $terms as $t ) {
+			$out[] = array( 'id' => $t->term_id, 'name' => $t->name, 'slug' => $t->slug, 'count' => $t->count, 'parent' => $t->parent );
+		}
+		return array( 'taxonomy' => $tax, 'terms' => $out );
+	}
+
+	private function tool_create_term( $args ) {
+		$tax = sanitize_key( $args['taxonomy'] );
+		if ( ! taxonomy_exists( $tax ) ) throw new Exception( 'Unknown taxonomy: ' . $tax );
+		$extra = array();
+		if ( isset( $args['parent_id'] ) )   $extra['parent']      = (int) $args['parent_id'];
+		if ( isset( $args['description'] ) ) $extra['description'] = sanitize_text_field( $args['description'] );
+		$res = wp_insert_term( sanitize_text_field( $args['name'] ), $tax, $extra );
+		if ( is_wp_error( $res ) ) throw new Exception( $res->get_error_message() );
+		return array( 'term_id' => $res['term_id'], 'taxonomy' => $tax );
+	}
+
+	private function tool_assign_terms( $args ) {
+		$tax = sanitize_key( $args['taxonomy'] );
+		if ( ! taxonomy_exists( $tax ) ) throw new Exception( 'Unknown taxonomy: ' . $tax );
+		$terms  = array_map( 'sanitize_text_field', (array) $args['terms'] );
+		$append = ! empty( $args['append'] );
+		$res = wp_set_object_terms( (int) $args['post_id'], $terms, $tax, $append );
+		if ( is_wp_error( $res ) ) throw new Exception( $res->get_error_message() );
+		return array( 'post_id' => (int) $args['post_id'], 'taxonomy' => $tax, 'assigned' => $terms, 'appended' => $append );
+	}
+
+	/* ----------------------- SEO tools ---------------------------- */
+
+	private function seo_keys() {
+		if ( defined( 'WPSEO_VERSION' ) ) {
+			return array( 'plugin' => 'yoast', 'title' => '_yoast_wpseo_title', 'description' => '_yoast_wpseo_metadesc', 'focus_keyword' => '_yoast_wpseo_focuskw' );
+		}
+		if ( class_exists( 'RankMath' ) ) {
+			return array( 'plugin' => 'rankmath', 'title' => 'rank_math_title', 'description' => 'rank_math_description', 'focus_keyword' => 'rank_math_focus_keyword' );
+		}
+		throw new Exception( 'No supported SEO plugin (Yoast SEO or Rank Math) is active.' );
+	}
+
+	private function tool_get_seo( $args ) {
+		$keys = $this->seo_keys();
+		$id   = (int) $args['post_id'];
+		if ( ! get_post( $id ) ) throw new Exception( 'Post not found' );
+		return array(
+			'post_id'       => $id,
+			'seo_plugin'    => $keys['plugin'],
+			'title'         => get_post_meta( $id, $keys['title'], true ),
+			'description'   => get_post_meta( $id, $keys['description'], true ),
+			'focus_keyword' => get_post_meta( $id, $keys['focus_keyword'], true ),
+			'url'           => get_permalink( $id ),
+		);
+	}
+
+	private function tool_update_seo( $args ) {
+		$keys = $this->seo_keys();
+		$id   = (int) $args['post_id'];
+		if ( ! get_post( $id ) ) throw new Exception( 'Post not found' );
+		$changed = array();
+		foreach ( array( 'title', 'description', 'focus_keyword' ) as $field ) {
+			if ( isset( $args[ $field ] ) ) {
+				update_post_meta( $id, $keys[ $field ], sanitize_text_field( $args[ $field ] ) );
+				$changed[] = $field;
+			}
+		}
+		return array( 'post_id' => $id, 'seo_plugin' => $keys['plugin'], 'updated' => $changed );
+	}
+
+	/* ----------------------- Coupon tools ------------------------- */
+
+	private function coupon_to_array( $c ) {
+		return array(
+			'id'             => $c->get_id(),
+			'code'           => $c->get_code(),
+			'discount_type'  => $c->get_discount_type(),
+			'amount'         => $c->get_amount(),
+			'expiry_date'    => $c->get_date_expires() ? $c->get_date_expires()->date( 'Y-m-d' ) : null,
+			'minimum_amount' => $c->get_minimum_amount(),
+			'usage_count'    => $c->get_usage_count(),
+			'usage_limit'    => $c->get_usage_limit(),
+			'free_shipping'  => $c->get_free_shipping(),
+			'individual_use' => $c->get_individual_use(),
+		);
+	}
+
+	private function tool_list_coupons( $args ) {
+		$this->require_woo();
+		$posts = get_posts( array(
+			'post_type'      => 'shop_coupon',
+			'post_status'    => 'publish',
+			'posts_per_page' => min( 100, isset( $args['limit'] ) ? (int) $args['limit'] : 25 ),
+			'paged'          => isset( $args['page'] ) ? max( 1, (int) $args['page'] ) : 1,
+		) );
+		$out = array();
+		foreach ( $posts as $p ) {
+			$out[] = $this->coupon_to_array( new WC_Coupon( $p->ID ) );
+		}
+		return array( 'coupons' => $out );
+	}
+
+	private function tool_get_coupon( $args ) {
+		$this->require_woo();
+		if ( ! empty( $args['id'] ) ) {
+			$c = new WC_Coupon( (int) $args['id'] );
+		} elseif ( ! empty( $args['code'] ) ) {
+			$c = new WC_Coupon( sanitize_text_field( $args['code'] ) );
+		} else {
+			throw new Exception( 'Provide a coupon id or code' );
+		}
+		if ( ! $c->get_id() ) throw new Exception( 'Coupon not found' );
+		return $this->coupon_to_array( $c );
+	}
+
+	private function apply_coupon_fields( $c, $args ) {
+		$types = array( 'percent', 'fixed_cart', 'fixed_product' );
+		if ( isset( $args['code'] ) )           $c->set_code( sanitize_text_field( $args['code'] ) );
+		if ( isset( $args['discount_type'] ) && in_array( $args['discount_type'], $types, true ) ) $c->set_discount_type( $args['discount_type'] );
+		if ( isset( $args['amount'] ) )         $c->set_amount( (string) floatval( $args['amount'] ) );
+		if ( isset( $args['expiry_date'] ) )    $c->set_date_expires( '' !== $args['expiry_date'] ? sanitize_text_field( $args['expiry_date'] ) : null );
+		if ( isset( $args['minimum_amount'] ) ) $c->set_minimum_amount( (string) floatval( $args['minimum_amount'] ) );
+		if ( isset( $args['usage_limit'] ) )    $c->set_usage_limit( (int) $args['usage_limit'] );
+		if ( isset( $args['free_shipping'] ) )  $c->set_free_shipping( (bool) $args['free_shipping'] );
+		if ( isset( $args['individual_use'] ) ) $c->set_individual_use( (bool) $args['individual_use'] );
+		return $c;
+	}
+
+	private function tool_create_coupon( $args ) {
+		$this->require_woo();
+		if ( wc_get_coupon_id_by_code( sanitize_text_field( $args['code'] ) ) ) throw new Exception( 'A coupon with this code already exists' );
+		$c = new WC_Coupon();
+		if ( ! isset( $args['discount_type'] ) ) $args['discount_type'] = 'percent';
+		$c = $this->apply_coupon_fields( $c, $args );
+		$c->save();
+		return $this->coupon_to_array( $c );
+	}
+
+	private function tool_update_coupon( $args ) {
+		$this->require_woo();
+		$c = new WC_Coupon( (int) $args['id'] );
+		if ( ! $c->get_id() ) throw new Exception( 'Coupon not found' );
+		$c = $this->apply_coupon_fields( $c, $args );
+		$c->save();
+		return $this->coupon_to_array( $c );
+	}
+
+	private function tool_trash_coupon( $args ) {
+		$this->require_woo();
+		$c = new WC_Coupon( (int) $args['id'] );
+		if ( ! $c->get_id() ) throw new Exception( 'Coupon not found' );
+		wp_trash_post( $c->get_id() );
+		return array( 'id' => (int) $args['id'], 'trashed' => true );
 	}
 
 	/* ---------------------------------------------------------------

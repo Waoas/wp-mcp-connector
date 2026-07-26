@@ -2,7 +2,7 @@
 /**
  * Plugin Name: AFF MCP Connector
  * Description: Exposes a Model Context Protocol (MCP) endpoint so Claude can connect to this site as a custom connector. Supports WordPress content + WooCommerce store tools.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Waris Salawudeen
  * License: GPL-2.0+
  */
@@ -14,7 +14,8 @@ class AFF_MCP_Connector {
 	const OPTION_TOKEN   = 'aff_mcp_token';
 	const PROTOCOL       = '2025-03-26';
 	const SERVER_NAME    = 'alpha-fresh-food-mcp';
-	const SERVER_VERSION = '1.1.0';
+	const SERVER_VERSION = '1.2.0';
+	const UPDATE_URL     = 'https://raw.githubusercontent.com/Waoas/wp-mcp-connector/main/aff-mcp-connector/aff-mcp-connector.php';
 
 	public function __construct() {
 		register_activation_hook( __FILE__, array( $this, 'on_activate' ) );
@@ -328,6 +329,16 @@ class AFF_MCP_Connector {
 					'required'   => array( 'post_id' ),
 				),
 			),
+			array(
+				'name'        => 'check_update',
+				'description' => 'Check whether a newer version of this MCP connector plugin is available on GitHub.',
+				'inputSchema' => array( 'type' => 'object', 'properties' => new stdClass() ),
+			),
+			array(
+				'name'        => 'self_update',
+				'description' => 'Update this MCP connector plugin to the latest version from GitHub. Backs up the current file first, validates the download, then overwrites itself. New tools become available on the next request.',
+				'inputSchema' => array( 'type' => 'object', 'properties' => new stdClass() ),
+			),
 		);
 
 		// WooCommerce tools only when Woo is active
@@ -500,6 +511,8 @@ class AFF_MCP_Connector {
 				case 'set_post_terms':  $data = $this->tool_set_post_terms( $args ); break;
 				case 'get_seo_meta':    $data = $this->tool_get_seo_meta( $args ); break;
 				case 'update_seo_meta': $data = $this->tool_update_seo_meta( $args ); break;
+				case 'check_update':    $data = $this->tool_check_update(); break;
+				case 'self_update':     $data = $this->tool_self_update(); break;
 				case 'list_coupons':    $data = $this->tool_list_coupons( $args ); break;
 				case 'get_coupon':      $data = $this->tool_get_coupon( $args ); break;
 				case 'create_coupon':   $data = $this->tool_create_coupon( $args ); break;
@@ -946,6 +959,74 @@ class AFF_MCP_Connector {
 		if ( isset( $args['meta_description'] ) ) { update_post_meta( $post_id, $keys['description'], sanitize_text_field( $args['meta_description'] ) ); $changed[] = 'meta_description'; }
 		if ( isset( $args['focus_keyword'] ) )    { update_post_meta( $post_id, $keys['keyword'], sanitize_text_field( $args['focus_keyword'] ) ); $changed[] = 'focus_keyword'; }
 		return array( 'post_id' => $post_id, 'seo_plugin' => $keys['plugin'], 'updated' => $changed );
+	}
+
+	/* ----------------------- Self-update tools --------------------- */
+
+	private function fetch_latest_plugin_code() {
+		$resp = wp_remote_get( self::UPDATE_URL, array( 'timeout' => 20 ) );
+		if ( is_wp_error( $resp ) ) throw new Exception( 'Could not reach GitHub: ' . $resp->get_error_message() );
+		if ( 200 !== wp_remote_retrieve_response_code( $resp ) ) {
+			throw new Exception( 'GitHub returned HTTP ' . wp_remote_retrieve_response_code( $resp ) );
+		}
+		$code = wp_remote_retrieve_body( $resp );
+
+		// Validate before trusting it
+		if ( 0 !== strpos( $code, '<?php' ) )                       throw new Exception( 'Downloaded file is not a PHP file.' );
+		if ( false === strpos( $code, 'class AFF_MCP_Connector' ) ) throw new Exception( 'Downloaded file is missing the plugin class.' );
+		if ( false === strpos( $code, 'new AFF_MCP_Connector();' ) ) throw new Exception( 'Downloaded file appears truncated.' );
+		if ( strlen( $code ) < 10000 )                              throw new Exception( 'Downloaded file is suspiciously small.' );
+
+		return $code;
+	}
+
+	private function parse_plugin_version( $code ) {
+		return preg_match( '/^\s*\*\s*Version:\s*([0-9.]+)/mi', $code, $m ) ? $m[1] : 'unknown';
+	}
+
+	private function tool_check_update() {
+		$code   = $this->fetch_latest_plugin_code();
+		$latest = $this->parse_plugin_version( $code );
+		return array(
+			'installed_version' => self::SERVER_VERSION,
+			'latest_version'    => $latest,
+			'update_available'  => version_compare( $latest, self::SERVER_VERSION, '>' ),
+			'source'            => self::UPDATE_URL,
+		);
+	}
+
+	private function tool_self_update() {
+		$code   = $this->fetch_latest_plugin_code();
+		$latest = $this->parse_plugin_version( $code );
+
+		if ( ! version_compare( $latest, self::SERVER_VERSION, '>' ) ) {
+			return array(
+				'updated'           => false,
+				'message'           => 'Already on the latest version.',
+				'installed_version' => self::SERVER_VERSION,
+				'latest_version'    => $latest,
+			);
+		}
+
+		$file = __FILE__;
+		if ( ! is_writable( $file ) ) throw new Exception( 'Plugin file is not writable by the web server: ' . $file );
+
+		// Keep a rollback copy of the current version
+		$backup = $file . '.bak';
+		if ( ! copy( $file, $backup ) ) throw new Exception( 'Could not create backup copy before updating.' );
+
+		if ( false === file_put_contents( $file, $code ) ) {
+			copy( $backup, $file ); // attempt restore
+			throw new Exception( 'Failed to write the updated plugin file. Original restored.' );
+		}
+
+		return array(
+			'updated'      => true,
+			'from_version' => self::SERVER_VERSION,
+			'to_version'   => $latest,
+			'backup_file'  => basename( $backup ),
+			'note'         => 'New tools are live from the next request onward.',
+		);
 	}
 
 	/* ----------------------- Coupon tools -------------------------- */
